@@ -1,131 +1,201 @@
-"""Sample newsroom plus separately authenticated, read-only Daum connection tests."""
-import os
-from pathlib import Path
-import sqlite3
-from datetime import datetime, timezone
-from contextlib import contextmanager
-from urllib.parse import urlsplit
+"""웹 진입점. FastAPI + Jinja2 + HTMX."""
+from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, FileResponse
+from contextlib import asynccontextmanager
+from datetime import datetime
+
+from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.exceptions import RequestValidationError
-from fastapi.exception_handlers import request_validation_exception_handler
-from app.mail_service import router as mail_router
-from pydantic import BaseModel, Field, ConfigDict
+from fastapi.templating import Jinja2Templates
 
-from app.domain import ROOT, bootstrap, load_sources
+from app.analyze.classify import strip_numbering
+from app.db import connect, loads
+from app.ingest.embargo import is_locked
+from app.pipeline import load_item, masked_for_ai, poll
+from app.recommend.picker import RecomputeLocked, current_weights, list_candidates, pick, score_items
+from app.recommend.ratings import TAGS, ApprovalLocked, RatingError, approve, latest_rating, save_rating
+from app.recommend.scoring import FEATURE_NAMES
+from app.settings import KST, ROOT, Settings, get_settings, to_kst
 
-app = FastAPI(title='콘텐츠메이커 엔진', version='0.3.0')
+STATUS_FLOW = ["수집됨", "분류됨", "후보", "평가됨", "승인", "기사화", "카드뉴스", "발행완료"]
+ACCOUNT_STATUS = {"sample": "샘플", "connected": "연결됨", "failed": "접속 실패", "not_configured": "미설정"}
 
-@app.exception_handler(RequestValidationError)
-async def safe_validation_error(request: Request, exc: RequestValidationError):
-    if request.url.path.startswith('/api/mail/'):
-        return JSONResponse({'detail':'메일 설정 요청 형식을 확인하세요.'},status_code=422)
-    return await request_validation_exception_handler(request,exc)
-
-app.include_router(mail_router)
-from app.outlook_service import router as outlook_router
-app.include_router(outlook_router)
-from app.mail_collection import router as collection_router
-app.include_router(collection_router)
-
-
-def database_path():
-    return Path(os.environ.get('CONTENT_MAKER_DB', ROOT / '.local' / 'content-maker.sqlite3'))
-
-
-@contextmanager
-def database():
-    path = database_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(str(path), timeout=10)
-    os.chmod(path, 0o600)
-    connection.row_factory = sqlite3.Row
-    connection.execute('CREATE TABLE IF NOT EXISTS evaluations (candidate_id TEXT PRIMARY KEY, rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5), tag TEXT NOT NULL, comment TEXT NOT NULL, updated_at TEXT NOT NULL)')
-    try:
-        yield connection
-        connection.commit()
-    finally: connection.close()
+# 아직 연결하지 않은 기능. 버튼은 비활성으로 두고 이유를 적는다.
+DISABLED = {
+    "draft": "기사 초안은 2단계(AI 연결·근거 대조) 뒤에 켭니다.",
+    "bundle": "묶음 기획은 2단계(AI 연결) 뒤에 만듭니다.",
+    "trend": "트렌드 분석은 2단계(AI 연결) 뒤에 만듭니다.",
+    "conn_test": "실제 접속 시험은 2단계에서 켭니다. 지금은 샘플 모드입니다.",
+    "learning": "가중치 학습은 3단계에서 켭니다. 지금은 평가를 저장만 합니다.",
+    "settings_edit": "설정은 config/*.yaml 에서 고칩니다. 화면 편집은 나중 단계입니다.",
+    "extract": "첨부 문서 추출은 2단계에서 켭니다.",
+}
 
 
-def evaluations():
-    with database() as connection:
-        return [{'candidateId': row['candidate_id'], 'rating': row['rating'], 'tag': row['tag'], 'comment': row['comment'], 'updatedAt': row['updated_at']} for row in connection.execute('SELECT * FROM evaluations ORDER BY updated_at DESC')]
+def create_app(settings: Settings | None = None) -> FastAPI:
+    settings = settings or get_settings()
 
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        conn = connect(settings.db_path)
+        app.state.conn = conn
+        if settings.sample_mode:
+            poll(conn, settings)
+            pick(conn, settings)
+        yield
+        conn.close()
 
-@app.middleware('http')
-async def sample_request_policy(request: Request, call_next):
-    if request.method not in ('GET', 'HEAD', 'OPTIONS'):
-        origin = request.headers.get('origin')
-        if origin:
-            parsed = urlsplit(origin)
-            expected = urlsplit(str(request.base_url))
-            if parsed.scheme != expected.scheme or parsed.netloc != expected.netloc:
-                return JSONResponse({'detail':'다른 사이트에서 보낸 변경 요청은 허용하지 않습니다.'}, status_code=403)
-        if request.headers.get('sec-fetch-site') == 'cross-site':
-            return JSONResponse({'detail':'교차 사이트 변경 요청은 허용하지 않습니다.'}, status_code=403)
+    app = FastAPI(title="콘텐츠메이커 엔진", lifespan=lifespan)
+    app.mount("/static", StaticFiles(directory=ROOT / "app" / "static"), name="static")
+    templates = Jinja2Templates(directory=ROOT / "app" / "web" / "templates")
+    env = templates.env
+    env.filters["kst"] = to_kst
+    env.globals.update(settings=settings, FEATURE_NAMES=FEATURE_NAMES, TAGS=TAGS, DISABLED=DISABLED,
+                       ACCOUNT_STATUS=ACCOUNT_STATUS, cat_name=settings.category_name,
+                       strip_numbering=strip_numbering)
+
+    def conn(request: Request):
+        return request.app.state.conn
+
+    def base_ctx(request: Request, **kw):
+        c = conn(request)
+        accounts = [dict(r) for r in c.execute("SELECT * FROM mail_accounts ORDER BY id")]
+        warnings = [f"{a['id']} 메일 접속 실패: {a['last_error'] or '원인 확인 필요'}"
+                    for a in accounts if a["status"] == "failed"]
+        return {"request": request, "now": settings.now(), "accounts": accounts, "warnings": warnings,
+                "ai_label": "규칙 분류(샘플)" if not settings.ai_enabled else "AI 분류", **kw}
+
+    def candidate_view(c, cand: dict) -> dict:
+        item = load_item(c, cand["item_id"])
+        rating = latest_rating(c, cand["id"])
+        return {**cand, "item": item, "rating": dict(rating) if rating else None,
+                "locked": is_locked(item["embargo_at"], settings.now())}
+
+    @app.get("/", response_class=HTMLResponse)
+    def dashboard(request: Request):
+        c = conn(request)
+        date = settings.now().astimezone(KST).date().isoformat()
+        cands = [candidate_view(c, x) for x in list_candidates(c, date)]
+        counts = {r["account_id"]: r["n"] for r in
+                  c.execute("SELECT account_id, COUNT(*) n FROM messages GROUP BY account_id")}
+        last_poll = c.execute("SELECT * FROM job_log WHERE job='poll' ORDER BY id DESC LIMIT 1").fetchone()
+        rated = sum(1 for x in cands if x["rating"])
+        return templates.TemplateResponse(request, "dashboard.html", base_ctx(
+            request, date=date, candidates=cands, counts=counts, last_poll=last_poll, rated=rated,
+            target=settings.scoring["candidates"]["total"],
+            recommend_time=settings.schedule.get("recommend")))
+
+    @app.post("/candidates/{cand_id}/rate", response_class=HTMLResponse)
+    def rate(request: Request, cand_id: int, score: int = Form(...), tag: str = Form(""),
+             comment: str = Form("")):
+        c = conn(request)
         try:
-            if int(request.headers.get('content-length','0')) > 16384:
-                return JSONResponse({'detail':'요청이 너무 큽니다.'}, status_code=413)
-        except ValueError:
-            return JSONResponse({'detail':'잘못된 요청 크기입니다.'}, status_code=400)
-    response = await call_next(request)
-    response.headers['X-Content-Type-Options'] = 'nosniff'
-    response.headers['Referrer-Policy'] = 'same-origin'
-    if request.url.path.startswith('/api/'):
-        response.headers['Cache-Control'] = 'no-store'
-    return response
+            save_rating(c, cand_id, score, tag or None, comment)
+        except RatingError as e:
+            raise HTTPException(400, str(e))
+        if request.headers.get("HX-Request"):
+            cand = next(x for x in list_candidates(c, c.execute(
+                "SELECT date FROM candidates WHERE id=?", (cand_id,)).fetchone()["date"]) if x["id"] == cand_id)
+            return templates.TemplateResponse(request, "_candidate.html", base_ctx(
+                request, c=candidate_view(c, cand), saved=True))
+        return RedirectResponse("/", status_code=303)
+
+    @app.post("/recommend/recompute")
+    def recompute(request: Request):
+        try:
+            pick(conn(request), settings, force=True)
+        except RecomputeLocked:
+            return RedirectResponse("/?locked=1", status_code=303)
+        return RedirectResponse("/", status_code=303)
+
+    @app.get("/inbox", response_class=HTMLResponse)
+    def inbox(request: Request, category: str = "", kind: str = "", flag: str = ""):
+        c = conn(request)
+        now = settings.now()
+        items = []
+        for r in c.execute("SELECT id FROM items ORDER BY received_at DESC"):
+            it = load_item(c, r["id"])
+            it["locked"] = is_locked(it["embargo_at"], now)
+            it["dup_accounts"] = [x["account_id"] for x in c.execute(
+                "SELECT DISTINCT account_id FROM messages WHERE item_id=? AND version=?",
+                (it["id"], it["current_version"]))]
+            if category and it["category"] != category:
+                continue
+            if kind and it["kind"] != kind:
+                continue
+            if flag == "embargo" and not it["embargo_at"]:
+                continue
+            if flag == "dup" and len(it["dup_accounts"]) < 2:
+                continue
+            if flag == "version" and it["current_version"] < 2:
+                continue
+            if flag == "manual" and not it["manual_flags"]:
+                continue
+            if flag == "sensitive" and it["sensitive_class"] == "none":
+                continue
+            items.append(it)
+        return templates.TemplateResponse(request, "inbox.html", base_ctx(
+            request, items=items, f_category=category, f_kind=kind, f_flag=flag,
+            categories=settings.categories["categories"]))
+
+    @app.get("/items/{item_id}", response_class=HTMLResponse)
+    def item_detail(request: Request, item_id: int):
+        c = conn(request)
+        if not c.execute("SELECT 1 FROM items WHERE id=?", (item_id,)).fetchone():
+            raise HTTPException(404, "자료가 없습니다.")
+        it = load_item(c, item_id)
+        it["locked"] = is_locked(it["embargo_at"], settings.now())
+        messages = [dict(r) for r in c.execute("SELECT * FROM messages WHERE item_id=? ORDER BY version, id",
+                                               (item_id,))]
+        latest = next(m for m in messages if m["version"] == it["current_version"])
+        versions = [dict(r) for r in c.execute("SELECT * FROM item_versions WHERE item_id=? ORDER BY version",
+                                               (item_id,))]
+        refs = [dict(r) for r in c.execute("SELECT * FROM source_refs WHERE item_id=? AND origin='body' "
+                                           "ORDER BY rowid", (item_id,))]
+        attachments = [dict(r) for r in c.execute(
+            "SELECT * FROM attachments WHERE message_id=? ORDER BY id", (latest["id"],))]
+        photos = [dict(r) for r in c.execute("SELECT * FROM photos WHERE item_id=?", (item_id,))]
+        plans = {r["type"]: loads(r["payload"]) for r in c.execute(
+            "SELECT * FROM plans WHERE item_ids=?", (f'["{item_id}"]',))}
+        log = [dict(r) for r in c.execute("SELECT * FROM status_log WHERE entity='item' AND entity_id=? "
+                                          "ORDER BY id", (item_id,))]
+        score = next((e for e in score_items(c, settings, settings.now()) if e["item"]["id"] == item_id), None)
+        return templates.TemplateResponse(request, "item.html", base_ctx(
+            request, it=it, messages=messages, latest=latest, versions=versions, refs=refs,
+            attachments=attachments, photos=photos, plans=plans, log=log, score=score,
+            ai_preview=masked_for_ai(c, item_id, settings) if it["kind"] == "tip" else None,
+            error=request.query_params.get("error")))
+
+    @app.post("/items/{item_id}/approve")
+    def approve_item(request: Request, item_id: int):
+        try:
+            approve(conn(request), item_id, settings.now())
+        except ApprovalLocked as e:
+            from urllib.parse import quote
+            return RedirectResponse(f"/items/{item_id}?error={quote(str(e))}", status_code=303)
+        return RedirectResponse(f"/items/{item_id}", status_code=303)
+
+    @app.get("/connections", response_class=HTMLResponse)
+    def connections(request: Request):
+        return templates.TemplateResponse(request, "connections.html", base_ctx(
+            request, ai_provider=settings.ai_provider, ai_key_present=settings.ai_key_present))
+
+    @app.get("/learning", response_class=HTMLResponse)
+    def learning(request: Request):
+        c = conn(request)
+        version, weights, bias = current_weights(c, settings)
+        versions = [dict(r) for r in c.execute("SELECT * FROM weight_versions ORDER BY version DESC")]
+        n = c.execute("SELECT COUNT(*) FROM ratings").fetchone()[0]
+        return templates.TemplateResponse(request, "learning.html", base_ctx(
+            request, weights=weights, bias=bias, versions=versions, n_ratings=n,
+            min_ratings=settings.scoring["learning"]["min_ratings_before_weight_update"]))
+
+    @app.get("/settings", response_class=HTMLResponse)
+    def settings_page(request: Request):
+        return templates.TemplateResponse(request, "settings.html", base_ctx(request))
+
+    return app
 
 
-@app.get('/api/health')
-def health():
-    return {'ok':True, 'name':'콘텐츠메이커 엔진', 'phase':1, 'mode':'sample', 'imapConnected':False, 'aiConnected':False, 'publishingEnabled':False,'mailConnectionTestAvailable':True}
-
-
-@app.get('/api/bootstrap')
-def get_bootstrap(): return bootstrap(evaluations())
-
-
-@app.get('/api/sources/{source_id}')
-def get_source(source_id: str):
-    item = next((source for source in load_sources() if source['id'] == source_id), None)
-    if not item: raise HTTPException(404, '자료가 없습니다.')
-    return item
-
-
-@app.get('/api/evaluations')
-def get_evaluations(): return {'items':evaluations()}
-
-
-class EvaluationInput(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    candidateId: str = Field(min_length=1, max_length=100)
-    rating: int = Field(ge=1, le=5, strict=True)
-    tag: str = Field(pattern=r'^(채택|보류|폐기|후속취재)$')
-    comment: str = Field(default='', max_length=1000)
-
-
-@app.post('/api/evaluations')
-def evaluate(value: EvaluationInput):
-    if value.candidateId not in {c['id'] for c in bootstrap()['candidates']}:
-        raise HTTPException(404, '오늘의 후보에 없는 자료입니다.')
-    updated_at = datetime.now(timezone.utc).isoformat()
-    with database() as connection:
-        connection.execute('INSERT INTO evaluations(candidate_id,rating,tag,comment,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(candidate_id) DO UPDATE SET rating=excluded.rating, tag=excluded.tag, comment=excluded.comment, updated_at=excluded.updated_at', (value.candidateId, value.rating, value.tag, value.comment, updated_at))
-    return {'evaluation':{'candidateId':value.candidateId,'rating':value.rating,'tag':value.tag,'comment':value.comment,'updatedAt':updated_at}, 'learningApplied':False, 'notice':'평가를 저장했습니다. 다음 날 가중치 학습은 3단계 예정입니다.'}
-
-
-@app.post('/api/publish')
-@app.post('/api/approve')
-@app.post('/api/collect')
-@app.post('/api/ai/draft')
-def unavailable():
-    raise HTTPException(409, '1단계 샘플 모드에서는 실제 수집·AI 작성·승인·외부 송고를 실행하지 않습니다.')
-
-
-@app.get('/')
-def index(): return FileResponse(ROOT / 'web' / 'index.html', headers={'Cache-Control':'no-cache'})
-
-
-app.mount('/', StaticFiles(directory=ROOT / 'web'), name='web')
+app = create_app()

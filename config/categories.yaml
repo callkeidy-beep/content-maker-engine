@@ -1,0 +1,51 @@
+# 분류 체계. 키는 영어(코드용), name은 화면 표시.
+# keywords는 AI가 없을 때 쓰는 규칙 분류용 힌트다.
+# 규칙 분류 점수: 제목에 나온 단어 2점, 본문 1점, 발신자 힌트(org_hints) 2점. 가장 높은 분류 하나.
+# 아무 단어도 걸리지 않으면 other.
+
+categories:
+  film:
+    name: 영화
+    keywords: [영화, 개봉, 시사회, 감독, 배우, 박스오피스, 영화제]   # '관객'은 공연·전시와 겹쳐 뺐다 (2026-11-27)
+  performance:
+    name: 공연
+    keywords: [공연, 뮤지컬, 연극, 콘서트, 오케스트라, 무용, 티켓 오픈, 음악회, 협연]
+  exhibition:
+    name: 전시
+    keywords: [전시, 갤러리, 미술관, 작가전, 개막, 관람]
+  broadcast:
+    name: 방송·OTT
+    keywords: [방송, 드라마, 예능, OTT, 시청률, 공개, 편성]
+  business:
+    name: 기업
+    keywords: [출시, 매출, 영업이익, 투자, 협약, MOU, 신제품, 실적]
+  policy:
+    name: 정책·공공
+    keywords: [정부, 부처, 지원사업, 공모, 지자체, 재단, 고시, 시행, 예산, 시의회]
+  local:
+    name: 지역
+    keywords: [시청, 군청, 도청, 축제, 지역]
+  other:
+    name: 기타
+    keywords: []
+
+# 발신자 이름(From 표시 이름)에 이 말이 들어가면 해당 분류에 2점.
+org_hints:
+  business: [전자, IR팀]
+  policy: [재단, 문화체육국]
+  local: [군청, 구청, 도청]
+
+# 단어가 이 긴 말의 일부로만 나오면 세지 않는다. (예: '문화재단' 속 '화재')
+exclusions:
+  화재: [문화재]
+  시청: [시청률, 시청 시간, 시청 순위, 시청 1위]
+
+kinds:
+  press_release: 보도자료
+  tip: 제보
+
+sensitive_classes:
+  disaster: [지진, 화재, 홍수, 붕괴, 폭발, 재난]
+  accident: [사고, 사망, 부상, 추락, 충돌]
+  crime: [고소, 고발, 혐의, 구속, 수사, 기소, 폭행]
+  election: [선거, 후보, 투표, 출마, 공천]

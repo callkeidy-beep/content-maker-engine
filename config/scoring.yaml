@@ -1,0 +1,36 @@
+# 후보 12 점수 설정. 규칙 설명은 docs/scoring.md
+
+weights:            # 합 1.0
+  timeliness: 0.18
+  impact: 0.18
+  exclusivity: 0.14
+  fit: 0.14
+  visual: 0.10
+  embargo: 0.08
+  follow_up: 0.10
+  numbers: 0.08
+
+duplication:
+  penalty_per_point: 4
+  window_days: 7
+
+candidates:
+  total: 12
+  main: 10
+  explore: 2
+  window_hours: 48
+  max_per_category_in_main: 4
+
+learning:
+  enabled: true
+  min_ratings_before_weight_update: 10
+  lr: 0.05
+  lr_bias: 1.0
+  weight_min: 0.03
+  weight_max: 0.40
+  max_step: 0.05
+  category_bias_limit: 15
+  tag_adjust:
+    adopt: 0.5
+    drop: -0.5
+    follow_up_boost: 1

@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}{{ it.title_guess }} — 콘텐츠메이커 엔진{% endblock %}
+{% block body %}
+<p class="crumbs"><a href="/inbox">수신함</a> › 자료 {{ it.id }}</p>
+<h1>{{ it.title_guess }}</h1>
+<div class="badges">
+  <span class="badge cat">{{ cat_name(it.category) }}</span>
+  <span class="badge">{{ '제보' if it.kind == 'tip' else '보도자료' }}</span>
+  <span class="badge">규칙 분류(샘플)</span>
+  {% if it.locked %}<span class="badge flag">잠김 · 송고 불가 · {{ it.embargo_at|kst }} 해제</span>{% elif it.embargo_at %}<span class="badge">엠바고 해제됨 ({{ it.embargo_at|kst }})</span>{% endif %}
+  {% if it.current_version > 1 %}<span class="badge">v{{ it.current_version }} 최신본 표시 중</span>{% endif %}
+  {% if it.sensitive_class != 'none' %}<span class="badge flag">AI 초안 제한 ({{ it.sensitive_class }}: {{ it.sensitive_hits|join(', ') }})</span>{% endif %}
+  {% for m in it.manual_flags %}<span class="badge flag">{{ m }}</span>{% endfor %}
+</div>
+
+<ol class="flow">
+  {% for s in ['수집됨','분류됨','후보','평가됨','승인','기사화','카드뉴스','발행완료'] %}
+  <li class="{{ 'on' if s == it.status }}">{{ s }}</li>
+  {% endfor %}
+  {% if it.status in ['보류','폐기','후속취재'] %}<li class="on side">{{ it.status }}</li>{% endif %}
+</ol>
+
+{% if error %}<div class="alert">{{ error }}</div>{% endif %}
+<div class="actions">
+  <form method="post" action="/items/{{ it.id }}/approve">
+    <button {% if it.locked %}disabled title="엠바고 해제 전에는 승인할 수 없습니다."{% elif it.status in ['승인','기사화','카드뉴스','발행완료'] %}disabled title="이미 승인했습니다."{% endif %}>편집자 승인</button>
+  </form>
+  {% if it.locked %}<span class="why">엠바고 해제 전에는 승인 버튼이 잠깁니다.</span>{% endif %}
+  <button disabled title="{{ DISABLED.draft }}">기사 초안 만들기</button>
+  <span class="why">{{ DISABLED.draft }}</span>
+</div>
+
+<div class="two">
+  <section>
+    <h2>원문 <span class="muted">v{{ it.current_version }} · {{ latest.received_at|kst }} 수신 · {{ latest.charset }}</span></h2>
+    <p class="meta">제목: {{ latest.subject }}</p>
+    <ol class="source">
+      {% for r in refs %}<li id="{{ r.id }}"><code>p{{ loop.index }}</code> {{ r.quote }}</li>{% endfor %}
+    </ol>
+    <h3>받은 메일</h3>
+    <ul class="plain">
+      {% for m in messages %}<li>v{{ m.version }} · {{ m.account_id }} / {{ m.folder }} · {{ m.received_at|kst }}{% if m.dup_group_id %} · 중복 묶음 #{{ m.dup_group_id }}{% endif %}</li>{% endfor %}
+    </ul>
+    {% if versions|length > 1 %}
+    <h3>버전</h3>
+    <ul class="plain">{% for v in versions %}<li>v{{ v.version }} · {{ v.created_at|kst }} · {{ v.diff_summary }}</li>{% endfor %}</ul>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2>추출 정보 <span class="muted">규칙 추출 · 검증 전</span></h2>
+    <dl class="facts">
+      <dt>발신</dt><dd>{{ it.org or '제보' }}</dd>
+      <dt>연락처</dt><dd>{% if it.kind == 'tip' %}{{ it.contact_masked }} <span class="muted">(원본은 DB에만)</span>{% else %}{{ it.contact_info or '확인 필요' }}{% endif %}</dd>
+      <dt>수신</dt><dd>{{ it.received_at|kst }}</dd>
+      <dt>엠바고</dt><dd>{% if it.embargo_at %}{{ it.embargo_at|kst }} · “{{ it.embargo_quote }}”{% else %}없음{% endif %}</dd>
+      <dt>분류 점수</dt><dd>{% for k, v in it.category_scores.items() %}{{ cat_name(k) }} {{ v }}{% if not loop.last %} · {% endif %}{% else %}걸린 단어 없음 → 기타{% endfor %}</dd>
+      <dt>인물</dt><dd>{% for p in it.entities.people %}{{ p.role }} {{ p.name }} <a href="#{{ p.source_ref }}">↗</a>{% if not loop.last %}, {% endif %}{% else %}—{% endfor %}</dd>
+      <dt>숫자</dt><dd>{% for n in it.entities.numbers %}{{ n.value }} <a href="#{{ n.source_ref }}">↗</a>{% if not loop.last %}, {% endif %}{% else %}—{% endfor %}</dd>
+    </dl>
+    <h3>핵심 사실</h3>
+    <ul class="plain">{% for f in it.key_facts %}<li>{{ f.text }} <a href="#{{ f.source_ref }}" class="ref">{{ f.source_ref.split(':')[-1] }}</a></li>{% endfor %}</ul>
+
+    <h3>첨부</h3>
+    <ul class="plain">
+      {% for a in attachments %}
+      <li>{{ a.filename }} {% if a.size %}<span class="muted">{{ (a.size/1024)|round(1) }}KB</span>{% endif %}
+        {% if a.extract_status == 'not_run' %}<span class="badge">추출 전 · 2단계</span>
+        {% elif a.extract_status == 'link_only' %}<span class="badge flag">수동 내려받기 필요</span> <span class="muted">{{ a.external_link }}</span>
+        {% elif a.extract_status == 'manual' %}<span class="badge flag">수동 확인 필요</span>{% endif %}</li>
+      {% else %}<li class="muted">없음</li>{% endfor %}
+    </ul>
+    <h3>사진</h3>
+    <ul class="plain">
+      {% for p in photos %}<li>사진 {{ p.id }} · {{ p.width }}×{{ p.height }} · {{ p.caption or '캡션 없음' }} · {{ p.usage_terms or '사용 조건 미상' }} · {% if p.usable == 'true' %}<span class="badge">사용 가능</span>{% else %}<span class="badge flag">사용 보류</span>{% endif %}</li>
+      {% else %}<li class="muted">없음</li>{% endfor %}
+      {% if it.entities.photo_credit %}<li class="muted">본문 표기 사진 출처: {{ it.entities.photo_credit }} 제공</li>{% endif %}
+    </ul>
+    {% if ai_preview %}
+    <h3>AI 전송용 미리보기 <span class="muted">개인정보 가림 적용 · 1단계는 실제로 보내지 않음</span></h3>
+    <pre class="preview">{{ ai_preview }}</pre>
+    {% endif %}
+  </section>
+</div>
+
+<h2>기획 4종</h2>
+<div class="plans">
+  {% set s = plans.get('single') %}
+  <section class="plan">
+    <h3>1. 단일 기사 <span class="muted">규칙 기획</span></h3>
+    {% if s %}
+    <p><b>가제</b> {{ s.working_title }}</p>
+    <p><b>앵글</b> {{ s.angle }}</p>
+    <p><b>리드 후보</b></p><ul class="plain">{% for l in s.lead_options %}<li>{{ l }}</li>{% endfor %}</ul>
+    <p><b>꼭 들어갈 사실</b></p><ul class="plain">{% for m in s.must_include %}<li>{{ m.text }} <a class="ref" href="#{{ m.source_ref }}">{{ m.source_ref.split(':')[-1] }}</a></li>{% endfor %}</ul>
+    {% if s.gaps %}<p><b>부족한 점</b></p><ul class="plain">{% for g in s.gaps %}<li>{{ g }}</li>{% endfor %}</ul>{% endif %}
+    {% endif %}
+  </section>
+  <section class="plan off"><h3>2. 묶음 기사</h3><p class="why">{{ DISABLED.bundle }}</p></section>
+  <section class="plan off"><h3>3. 트렌드 분석</h3><p class="why">{{ DISABLED.trend }}</p></section>
+  {% set q = plans.get('questions') %}
+  <section class="plan">
+    <h3>4. 추가 취재 질문 <span class="muted">규칙 기획</span></h3>
+    {% if q %}
+    <ul class="plain">{% for h in q.hidden_issues %}<li><b>확인할 가설</b> {{ h.hypothesis }} — {{ h.why }} <a class="ref" href="#{{ h.source_ref }}">{{ h.source_ref.split(':')[-1] }}</a></li>{% endfor %}</ul>
+    <ol>{% for x in q.questions %}<li>[{{ x.to }}] {{ x.question }}</li>{% endfor %}</ol>
+    {% if q.data_to_request %}<p class="muted">요청할 자료: {{ q.data_to_request|join(' · ') }}</p>{% endif %}
+    <p class="muted">{{ q.risk_notes }}</p>
+    {% else %}<p class="muted">규칙으로 찾은 확인 지점이 없습니다. AI 연결 뒤 다시 봅니다.</p>{% endif %}
+  </section>
+</div>
+
+{% if score %}
+<h2>점수 <span class="muted">총점 {{ score.result.total }} · base {{ score.result.base }} · 가중치 v{{ score.weights_version }}</span></h2>
+<table class="list compact">
+  {% for k, v in score.result.features.items() %}<tr><th>{{ FEATURE_NAMES[k] }}</th><td class="num">{{ '%g'|format(v) }}</td><td class="muted">{{ score.result.notes[k] }}</td></tr>{% endfor %}
+</table>
+{% endif %}
+
+<h2>상태 기록</h2>
+<ul class="plain">{% for l in log %}<li>{{ l.at|kst }} · {{ l.from_status or '—' }} → {{ l.to_status }} · {{ '편집자' if l.actor == 'editor' else '시스템' }}</li>{% endfor %}</ul>
+{% endblock %}

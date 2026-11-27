@@ -1,0 +1,17 @@
+max_slides: 10
+min_slides: 4
+default_ratio: "1:1"         # 1:1 | 4:5
+sizes:
+  "1:1": [1080, 1080]
+  "4:5": [1080, 1350]
+text_limits:
+  title_chars: 22
+  body_chars: 70
+structure:                   # 기본 흐름. AI가 이 순서를 따른다
+  - cover        # 1장: 한 문장 훅 + 대표 사진
+  - fact         # 핵심 사실
+  - detail       # 세부 (1~5장)
+  - number       # 숫자 강조 (있을 때만)
+  - closing      # 마지막: 출처·AI 표시·매체
+design:
+  template: null             # 디자인 제공 전까지 비워 둔다

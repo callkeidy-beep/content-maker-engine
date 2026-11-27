@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}콘텐츠메이커 엔진{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/htmx.min.js" defer></script>
+</head>
+<body>
+{% if settings.sample_mode %}
+<div class="sample-band" role="status">
+  <strong>샘플</strong>
+  <span>가상 자료 20건 · {{ ai_label }} · 기준 시각 {{ now|kst }} KST (실제 시각 아님) · 실제 메일에 접속하지 않습니다</span>
+</div>
+{% endif %}
+<header class="top">
+  <a class="brand" href="/">콘텐츠메이커 엔진</a>
+  <nav>
+    <a href="/" class="{{ 'on' if request.url.path == '/' }}">오늘의 후보</a>
+    <a href="/inbox" class="{{ 'on' if request.url.path.startswith('/inbox') or request.url.path.startswith('/items') }}">수신함</a>
+    <a href="/learning" class="{{ 'on' if request.url.path == '/learning' }}">학습 기록</a>
+    <a href="/connections" class="{{ 'on' if request.url.path == '/connections' }}">연결 상태</a>
+    <a href="/settings" class="{{ 'on' if request.url.path == '/settings' }}">설정</a>
+  </nav>
+</header>
+{% for w in warnings %}<div class="alert">⚠ {{ w }}</div>{% endfor %}
+<main>{% block body %}{% endblock %}</main>
+<footer>마지막 판단은 사람이 합니다. 이 화면의 점수·분류는 규칙 계산이며 사실을 확인한 결과가 아닙니다.</footer>
+</body>
+</html>

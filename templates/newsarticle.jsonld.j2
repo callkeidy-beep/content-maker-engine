@@ -1,0 +1,22 @@
+{
+  "@context": "https://schema.org",
+  "@type": "NewsArticle",
+  "headline": {{ fm.title | tojson }},
+  "alternativeHeadline": {{ fm.subtitle | tojson }},
+  "description": {{ summary[0] | tojson }},
+  "datePublished": "{{ date_published }}",
+  "dateModified": "{{ date_modified }}",
+  "inLanguage": "ko-KR",
+  "articleSection": {{ category_name | tojson }},
+  "keywords": {{ fm.tags | tojson }},
+  "author": [{"@type": "Person", "name": {{ publication.byline | tojson }}}],
+  "publisher": {
+    "@type": "Organization",
+    "name": {{ publication.name | tojson }},
+    "url": "{{ publication.url }}"{% if publication.logo_url %},
+    "logo": {"@type": "ImageObject", "url": "{{ publication.logo_url }}"}{% endif %}
+  },
+  "image": {{ image_urls | tojson }},
+  "mainEntityOfPage": "{{ canonical_url }}",
+  "about": [{% for n in (fm.orgs + fm.people) %}{"@type": "Thing", "name": {{ n | tojson }}}{% if not loop.last %}, {% endif %}{% endfor %}]
+}

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}수신함 — 콘텐츠메이커 엔진{% endblock %}
+{% block body %}
+<h1>수신함 <span class="muted">{{ items|length }}건</span></h1>
+<form class="filters" method="get">
+  <select name="category"><option value="">모든 분야</option>
+    {% for k, v in categories.items() %}<option value="{{ k }}" {% if f_category == k %}selected{% endif %}>{{ v.name }}</option>{% endfor %}
+  </select>
+  <select name="kind"><option value="">보도자료·제보</option>
+    <option value="press_release" {% if f_kind == 'press_release' %}selected{% endif %}>보도자료</option>
+    <option value="tip" {% if f_kind == 'tip' %}selected{% endif %}>제보</option>
+  </select>
+  <select name="flag"><option value="">표시 전체</option>
+    {% for k, v in [('embargo','엠바고'),('dup','두 계정 중복'),('version','수정본'),('manual','수동 확인'),('sensitive','민감 분야')] %}
+    <option value="{{ k }}" {% if f_flag == k %}selected{% endif %}>{{ v }}</option>{% endfor %}
+  </select>
+  <button class="ghost">거르기</button>
+</form>
+<table class="list">
+  <thead><tr><th>수신</th><th>분야</th><th>제목</th><th>발신</th><th>상태</th><th>표시</th></tr></thead>
+  <tbody>
+  {% for it in items %}
+  <tr>
+    <td class="muted nowrap">{{ it.received_at|kst }}</td>
+    <td>{{ cat_name(it.category) }}</td>
+    <td><a href="/items/{{ it.id }}">{{ it.title_guess }}</a></td>
+    <td>{{ it.org or '[제보자]' }}</td>
+    <td>{{ it.status }}</td>
+    <td class="flags">
+      {% if it.kind == 'tip' %}<span class="badge">제보</span>{% endif %}
+      {% if it.locked %}<span class="badge flag">잠김</span>{% elif it.embargo_at %}<span class="badge">엠바고 해제됨</span>{% endif %}
+      {% if it.dup_accounts|length > 1 %}<span class="badge">두 계정 수신</span>{% endif %}
+      {% if it.current_version > 1 %}<span class="badge">v{{ it.current_version }} 최신본</span>{% endif %}
+      {% if it.sensitive_class != 'none' %}<span class="badge flag">AI 초안 제한</span>{% endif %}
+      {% for m in it.manual_flags %}<span class="badge flag">{{ m.split(':')[0] }}</span>{% endfor %}
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

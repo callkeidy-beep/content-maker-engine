@@ -1,11 +1,7 @@
-.git
 .env
-.env.*
 .venv
-.local
-site-dist
+data
 backups
-node_modules
+.git
+.pytest_cache
 __pycache__
-*.pyc
-test-results

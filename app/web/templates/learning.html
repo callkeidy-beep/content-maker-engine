@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}학습 기록 — 콘텐츠메이커 엔진{% endblock %}
+{% block body %}
+<h1>학습 기록</h1>
+<div class="note">{{ DISABLED.learning }} 평가 {{ n_ratings }}건 저장됨 (가중치는 평가 {{ min_ratings }}건이 넘어야 바뀝니다).</div>
+<h2>현재 가중치</h2>
+<table class="list compact">
+  {% for k, v in weights.items() %}<tr><th>{{ FEATURE_NAMES[k] }}</th><td class="bar"><i style="width: {{ (v / 0.4 * 100)|round }}%"></i></td><td class="num">{{ '%.2f'|format(v) }}</td></tr>{% endfor %}
+</table>
+<h2>버전</h2>
+<ul class="plain">{% for v in versions %}<li>v{{ v.version }} · {{ v.created_at|kst }} · {{ v.reason }}</li>{% endfor %}</ul>
+<div class="actions"><button disabled title="{{ DISABLED.learning }}">가중치 초기화</button><button disabled title="{{ DISABLED.learning }}">이 버전으로 복원</button><span class="why">3단계</span></div>
+{% endblock %}

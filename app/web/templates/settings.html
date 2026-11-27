@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}설정 — 콘텐츠메이커 엔진{% endblock %}
+{% block body %}
+<h1>설정 <span class="muted">읽기 전용</span></h1>
+<div class="note">{{ DISABLED.settings_edit }}</div>
+<dl class="facts">
+  <dt>메일 모드</dt><dd>{{ settings.mail.mode }}</dd>
+  <dt>수집 주기</dt><dd>{{ settings.schedule.poll.every_minutes }}분 (2단계 실수집부터)</dd>
+  <dt>추천 시각</dt><dd>{{ settings.schedule.recommend }} KST</dd>
+  <dt>백업</dt><dd>{{ settings.schedule.backup.weekday }} {{ settings.schedule.backup.time }} · {{ settings.schedule.backup.keep_weeks }}주 보관 (3단계)</dd>
+  <dt>기본 매체</dt><dd>{{ settings.default_publication.name }} · 중점 분야 {% for c in settings.default_publication.focus_categories %}{{ cat_name(c) }}{% if not loop.last %}, {% endif %}{% endfor %}</dd>
+  <dt>제보자 정보 가리기</dt><dd>{{ '켜짐' if settings.publication.privacy.mask_tipster_info else '꺼짐' }}</dd>
+  <dt>AI 공급자</dt><dd>{{ settings.ai_provider }} (1단계 미사용)</dd>
+</dl>
+{% endblock %}

@@ -1,0 +1,55 @@
+---
+title: "{{ fm.title }}"
+subtitle: "{{ fm.subtitle }}"
+date_published: "{{ date_published }}"      # ISO 8601, +09:00
+date_modified: "{{ date_modified }}"
+publication: "{{ publication.name }}"
+author: "{{ publication.byline }}"
+category: "{{ fm.category }}"
+tags: [{{ fm.tags | join(', ') }}]
+people: [{{ fm.people | join(', ') }}]
+orgs: [{{ fm.orgs | join(', ') }}]
+source_item_ids: [{{ item_ids | join(', ') }}]
+embargo_at: {{ fm.embargo_at or 'null' }}
+ai_assisted: true
+human_reviewed: {{ human_reviewed | lower }}
+---
+
+# {{ fm.title }}
+
+**{{ fm.subtitle }}**
+
+## 요약
+
+{% for line in summary %}- {{ line }}
+{% endfor %}
+
+## 핵심 사실
+
+| 항목 | 내용 |
+|---|---|
+{% for f in fact_table %}| {{ f.label }} | {{ f.value }} |
+{% endfor %}
+
+{% for s in sections %}
+## {{ s.subhead }}
+
+{{ s.sentences | map(attribute='text') | join(' ') }}
+{% endfor %}
+
+{% if faq %}
+## 자주 묻는 질문
+
+{% for x in faq %}
+**{{ x.q }}**
+{{ x.a }}
+{% endfor %}
+{% endif %}
+
+## 출처
+
+{% for src in sources %}- {{ src.org }}, 「{{ src.title }}」, {{ src.received_at }} 수신{% if src.attachments %} (첨부: {{ src.attachments | join(', ') }}){% endif %}
+{% endfor %}
+
+---
+*{{ publication.ai_disclosure.article }}*

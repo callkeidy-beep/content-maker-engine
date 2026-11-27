@@ -1,12 +1,43 @@
-# 서버·SSL·포트·앱 비밀번호 요구사항은 다음 공식 도움말로 확인했습니다.
-# 실제 계정 인증 성공과는 별개입니다. docs/mail-connection.md 참고.
-providers:
-  daum:
+# 메일 계정 설정
+# 비밀번호는 여기 쓰지 않는다. password_env에 적힌 .env 변수에서 읽는다.
+
+mode: sample          # sample | live  (1단계는 sample)
+
+accounts:
+  - id: naver-main
+    provider: naver
+    enabled: false
+    address_env: NAVER_ADDRESS
+    password_env: NAVER_APP_PASSWORD
+    host: imap.naver.com
+    port: 993
+    ssl: true
+    folders: ["보도자료", "제보"]
+
+  - id: daum-main
+    provider: daum
+    enabled: false
+    address_env: DAUM_ADDRESS
+    password_env: DAUM_APP_PASSWORD
     host: imap.daum.net
     port: 993
     ssl: true
-    enabled: true
-    folders: [보도자료, 제보]
-    timeout: 10
-    source: https://cs.daum.net/faq/service/43/category/9234/detail/24081
-    authentication_source: https://cs.daum.net/faq/service/43/category/9234/detail/31143
+    folders: ["보도자료", "제보"]
+
+sample:
+  path: samples/emails
+  # 샘플은 두 계정에서 온 것처럼 나눠 읽는다 (파일 헤더 X-Sample-Account)
+  clock: "2026-11-27T07:00:00+09:00"   # 샘플 기준 시각. 추천·엠바고 판단에 쓴다 (실제 시각 아님)
+
+fetch:
+  first_sync_days: 7          # 첫 연결 때 가져올 기간
+  resync_days_on_uidvalidity: 14
+  max_messages_per_poll: 200
+  max_attachment_mb: 30
+  read_only: true             # 바꾸지 않는다
+
+idle:
+  enabled: false              # 2단계 시험 후 결정
+  renew_minutes: 29
+
+retry_minutes: [1, 5, 15]

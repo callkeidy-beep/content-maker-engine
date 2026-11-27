@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}연결 상태 — 콘텐츠메이커 엔진{% endblock %}
+{% block body %}
+<h1>연결 상태</h1>
+<p class="muted">'연결됨'은 실제 접속 시험에 성공했을 때만 씁니다.</p>
+<h2>메일 계정</h2>
+<table class="list">
+  <thead><tr><th>계정</th><th>서버</th><th>폴더</th><th>상태</th><th>접속 시험</th></tr></thead>
+  {% for a in accounts %}
+  <tr><td>{{ a.id }} ({{ a.provider }})</td><td>{{ a.host }}:{{ a.port }}</td><td>{{ a.folders }}</td>
+    <td><span class="pill {{ a.status }}">{{ ACCOUNT_STATUS[a.status] }}</span></td>
+    <td><button disabled title="{{ DISABLED.conn_test }}">접속 시험</button> <span class="why">{{ DISABLED.conn_test }}</span></td></tr>
+  {% endfor %}
+</table>
+<h2>외부 연결</h2>
+<table class="list">
+  <thead><tr><th>대상</th><th>상태</th><th>설명</th></tr></thead>
+  <tr><td>AI ({{ ai_provider }})</td><td><span class="pill not_configured">미연결</span></td><td>{% if ai_key_present %}키가 있지만 1단계는 AI를 부르지 않습니다. 규칙 분류로 돕니다.{% else %}키 없음. 규칙 분류로 돕니다.{% endif %}</td></tr>
+  <tr><td>OCR</td><td><span class="pill not_configured">미연결</span></td><td>2단계</td></tr>
+  <tr><td>문서 추출(PDF·DOCX·XLSX·HWP)</td><td><span class="pill not_configured">미연결</span></td><td>2단계</td></tr>
+  <tr><td>외부 백업</td><td><span class="pill not_configured">미연결</span></td><td>3단계 · Google Drive 또는 Dropbox</td></tr>
+  <tr><td>인스타그램 게시</td><td><span class="pill not_configured">범위 밖</span></td><td>4단계 검토</td></tr>
+</table>
+<p class="muted">자세한 표: <code>docs/connections.md</code></p>
+{% endblock %}

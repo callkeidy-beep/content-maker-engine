@@ -1,0 +1,13 @@
+services:
+  engine:
+    build: .
+    ports:
+      - "127.0.0.1:3100:3100"   # 내 PC 안에서만 열린다
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - engine-data:/app/data   # DB·첨부. 컨테이너를 지워도 남는다
+    restart: unless-stopped
+volumes:
+  engine-data:

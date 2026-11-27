@@ -1,0 +1,34 @@
+<article class="card {{ c.slot }}" id="cand-{{ c.id }}">
+  <div class="card-top">
+    <span class="rank">{{ c.rank }}</span>
+    <span class="badge {{ c.slot }}">{{ '탐색' if c.slot == 'explore' else '추천' }}</span>
+    <span class="badge cat">{{ cat_name(c.item.category) }}</span>
+    <span class="badge">{{ '제보' if c.item.kind == 'tip' else '보도자료' }}</span>
+    {% for f in c.flags %}<span class="badge flag">{{ f }}</span>{% endfor %}
+    <span class="total" title="base {{ c.base_score }}">{{ c.total_score|round(1) }}</span>
+  </div>
+  <h2><a href="/items/{{ c.item.id }}">{{ c.item.title_guess }}</a></h2>
+  <p class="reason">{{ c.reason }}</p>
+  <details class="features">
+    <summary>항목별 점수</summary>
+    <table>
+      {% for k, v in c.feature_scores.items() %}
+      <tr><th>{{ FEATURE_NAMES[k] }}</th><td class="bar"><i style="width: {{ (v / 5 * 100)|round }}%" class="{{ 'neg' if k == 'duplication' }}"></i></td><td class="num">{{ '%g'|format(v) }}</td><td class="muted">{{ c.feature_notes[k] }}</td></tr>
+      {% endfor %}
+    </table>
+  </details>
+  <form class="rate" hx-post="/candidates/{{ c.id }}/rate" hx-target="#cand-{{ c.id }}" hx-swap="outerHTML" method="post" action="/candidates/{{ c.id }}/rate">
+    <fieldset class="stars">
+      {% for s in range(1, 6) %}
+      <label><input type="radio" name="score" value="{{ s }}" required {% if c.rating and c.rating.score == s %}checked{% endif %}><span>{{ s }}</span></label>
+      {% endfor %}
+    </fieldset>
+    <select name="tag" aria-label="태그">
+      <option value="">태그 없음</option>
+      {% for k, v in TAGS.items() %}<option value="{{ k }}" {% if c.rating and c.rating.tag == k %}selected{% endif %}>{{ v }}</option>{% endfor %}
+    </select>
+    <textarea name="comment" rows="2" placeholder="코멘트">{{ c.rating.comment if c.rating else '' }}</textarea>
+    <button>평가 저장</button>
+    {% if c.rating %}<span class="saved">{% if saved %}저장됨 · {% endif %}{{ c.rating.score }}점{% if c.rating.tag %} · {{ TAGS[c.rating.tag] }}{% endif %} · {{ c.rating.rated_at|kst }}</span>{% endif %}
+  </form>
+</article>

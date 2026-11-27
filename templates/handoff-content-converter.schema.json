@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "콘텐츠 변환 엔지니어로 넘기는 형식",
+  "type": "object",
+  "required": ["version", "source", "article", "assets"],
+  "properties": {
+    "version": {"const": "1.0"},
+    "source": {"const": "content-maker-engine"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "article": {
+      "type": "object",
+      "required": ["id", "title", "markdown", "publication"],
+      "properties": {
+        "id": {"type": "string"},
+        "title": {"type": "string"},
+        "subtitle": {"type": "string"},
+        "summary": {"type": "array", "items": {"type": "string"}},
+        "markdown": {"type": "string"},
+        "publication": {"type": "string"},
+        "url": {"type": ["string", "null"]},
+        "category": {"type": "string"},
+        "tags": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "cardnews": {"$ref": "cardnews.schema.json"},
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["photo_id", "file", "credit"],
+        "properties": {
+          "photo_id": {"type": "string"},
+          "file": {"type": "string", "description": "묶음 폴더 안 상대 경로"},
+          "caption": {"type": ["string", "null"]},
+          "credit": {"type": "string"},
+          "width": {"type": "integer"}, "height": {"type": "integer"}
+        }
+      }
+    },
+    "targets": {"type": "array", "items": {"enum": ["instagram", "shorts", "telegram", "kakao"]}}
+  }
+}

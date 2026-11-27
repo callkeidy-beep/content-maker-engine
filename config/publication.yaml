@@ -1,0 +1,27 @@
+# 발행 매체. 특정 매체에 묶지 않는다. 여러 개 등록하고 기본을 고른다.
+
+default: my-media
+
+publications:
+  - id: my-media
+    name: "(매체 이름 입력)"
+    url: "https://example.com"
+    logo_url: ""
+    language: ko
+    focus_categories: [film, performance, exhibition, broadcast]   # fit 점수 기준
+    byline: "(기자명 입력)"
+
+editor:
+  title: 콘텐츠 디자이너
+
+ai_disclosure:
+  article: "이 기사는 AI 도구로 자료를 정리한 뒤 기자가 사실을 확인하고 작성했습니다."
+  cardnews: "AI 활용·기자 검수"
+
+privacy:
+  mask_tipster_info: true
+  mask_press_contact: false
+
+style:
+  sentence: 짧은 문장, 주어+술어 중심
+  avoid: ["~로 알려졌다", "업계에 따르면", "관계자에 따르면(출처 없을 때)", "화제다", "눈길을 끈다"]
